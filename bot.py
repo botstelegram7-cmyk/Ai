@@ -18,21 +18,29 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN      = os.environ["BOT_TOKEN"]
 GROK_API_KEY   = os.environ["GROK_API_KEY"]
 OWNER_USERNAME = os.environ.get("OWNER_USERNAME", "xuoqui_xin").lstrip("@")
+OWNER_ID       = int(os.environ.get("OWNER_ID", "6518065496"))  # ← Hardcoded + ENV override
 
 GROK_API_URL   = "https://api.x.ai/v1/chat/completions"
 GROK_MODEL     = os.environ.get("GROK_MODEL", "grok-3-latest")
 
-# ─── Owner Check ─────────────────────────────────────────────────────────────
+# ─── Owner Check (ID ya Username dono se) ────────────────────────────────────
 def is_owner(update: Update) -> bool:
     user = update.effective_user
-    if not user or not user.username:
+    if not user:
         return False
-    return user.username.lower() == OWNER_USERNAME.lower()
+    # User ID se check (most reliable)
+    if user.id == OWNER_ID:
+        return True
+    # Username se check (fallback)
+    if user.username and user.username.lower() == OWNER_USERNAME.lower():
+        return True
+    return False
 
 def owner_only(func):
     """Decorator: sirf owner ke liye"""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_owner(update):
+            logger.warning(f"Access denied for user: id={update.effective_user.id}, username=@{update.effective_user.username}")
             await update.message.reply_text(
                 "⛔ *Access Denied!*\n\nYe bot sirf owner ke liye hai.",
                 parse_mode="Markdown"
@@ -135,7 +143,6 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── /status ─────────────────────────────────────────────────────────────────
 @owner_only
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Quick ping to Grok
     test = ask_grok("Reply with only: OK")
     grok_status = "✅ Online" if "OK" in test.upper() else f"⚠️ {test}"
     text = (
@@ -143,6 +150,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🤖 Bot: ✅ Running\n"
         f"🧠 Grok API: {grok_status}\n"
         f"👤 Owner: @{OWNER_USERNAME}\n"
+        f"🆔 Owner ID: `{OWNER_ID}`\n"
         f"🔧 Model: `{GROK_MODEL}`"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
@@ -178,7 +186,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if not query.from_user.username or query.from_user.username.lower() != OWNER_USERNAME.lower():
+    user = query.from_user
+    if user.id != OWNER_ID and (not user.username or user.username.lower() != OWNER_USERNAME.lower()):
         await query.message.reply_text("⛔ Access Denied.")
         return
 
@@ -192,7 +201,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "status":
         test = ask_grok("Reply with only: OK")
-        grok_status = "✅ Online" if "OK" in test.upper() else f"⚠️ Issue"
+        grok_status = "✅ Online" if "OK" in test.upper() else "⚠️ Issue"
         await query.message.reply_text(
             f"📊 *Status*\n\n🤖 Bot: ✅\n🧠 Grok: {grok_status}\n🔧 Model: `{GROK_MODEL}`",
             parse_mode="Markdown"
